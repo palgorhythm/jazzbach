@@ -17,29 +17,26 @@ const {
   noteArrToMidi
 } = require('./midiToNote');
 
-var resetVL;
-let numUpperVoices = 4;
-bassRange = [48, 1]; //beginning of range and number of octaves
-upperNoteRange = [72, 2];
-prevChord = [];
-var currentScale = [];
-
-function voiceLead(fromChord, toChord) {
-  numUpperVoices = fromChord.length - 1;
+const nameToChord = (chordName, bassRange, numUpperVoices) => {
   let chordRoot;
   let chordQuality;
-  if (toChord[1] == 'b' || toChord[1] == '#') {
-    chordRoot = toChord.slice(0, 2);
-    chordQuality = toChord.slice(2);
+
+  if (chordName[1] == 'b' || chordName[1] == '#') {
+    chordRoot = chordName.slice(0, 2);
+    chordQuality = chordName.slice(2);
   } else {
-    chordRoot = toChord[0];
-    chordQuality = toChord.slice(1);
+    chordRoot = chordName[0];
+    chordQuality = chordName.slice(1);
   }
-  currentScale = [];
+
   var upperNotes = [];
-  let chord = [];
-  var chordRootNum = notes[chordRoot];
-  var bassNote = trans2octaveInRange(chordRootNum, bassRange[0], bassRange[1]);
+  const chordRootNum = notes[chordRoot];
+  const bassNote = trans2octaveInRange(
+    chordRootNum,
+    bassRange[0],
+    bassRange[1]
+  );
+
   // console.log(chordQuality);
   var weights = [1.0, 1.0, 0.7, 0.5, 0.4, 0.1, 0.05];
   var weightedScaleNotes = generateWeightedList(
@@ -53,9 +50,6 @@ function voiceLead(fromChord, toChord) {
       return a !== weightedScaleNotes[random_num];
     });
   }
-
-  // var randy = rand(3, 6);
-  // upperNotes = chordQualities[chordQuality].slice(0, randy);
   var toPitchClasses = [];
   for (var i = 0; i < upperNotes.length; i++) {
     var noteRelativeToRoot = chordRootNum + upperNotes[i];
@@ -64,14 +58,48 @@ function voiceLead(fromChord, toChord) {
     }
     toPitchClasses.push(noteRelativeToRoot);
   }
+  return { bassNote, toPitchClasses };
+};
 
-  // console.log(toPitchClasses, upperNotes);
+const genRandomChord = (
+  chordName,
+  bassRange,
+  upperNoteRange,
+  numUpperVoices
+) => {
+  const { bassNote, toPitchClasses } = nameToChord(
+    chordName,
+    bassRange,
+    numUpperVoices
+  );
+  const upperVoices = toPitchClasses.map(pc => {
+    const rand = Math.floor(Math.random() * upperNoteRange[1]);
+    return 72 + rand * 12 + pc;
+  });
+  upperVoices.unshift(bassNote);
+  return upperVoices;
+};
 
-  // if (Math.random() > 1) {
-  //   resetVL = 1;
-  // }
+function voiceLead(fC, toChord) {
+  const resetVL = false;
+  let numUpperVoices = 4;
+  const bassRange = [48, 1]; //beginning of range and number of octaves
+  const upperNoteRange = [72, 2];
+  let fromChord = fC;
+  if (typeof fC === 'string') {
+    fromChord = genRandomChord(fC, bassRange, upperNoteRange, numUpperVoices);
+  }
+  console.log(fromChord);
+  numUpperVoices = fromChord.length - 1;
+  let chord = [];
 
-  if (resetVL === 1) {
+  const { bassNote, toPitchClasses } = nameToChord(
+    toChord,
+    bassRange,
+    numUpperVoices
+  );
+
+  if (resetVL) {
     for (var i = 0; i < toPitchClasses.length; i++) {
       var voice = trans2octaveInRange(
         toPitchClasses[i],
@@ -83,47 +111,32 @@ function voiceLead(fromChord, toChord) {
     resetVL = 0;
     soloTransp = 0;
   } else {
-    // toPitchClasses = [4, 7, 11, 2]; //! we're forcing this just for now to avoid randomness for testing!
     chord = nearestChord(noteArrToMidi(fromChord), toPitchClasses);
   }
-
   chord.unshift(bassNote);
-  console.log('from chord: ', fromChord);
-  console.log('to chord: ', midiArrToNotes(chord));
-  var scaleIntervals = chordQualities[chordQuality];
-
-  for (var i = 0; i < scaleIntervals.length; i++) {
-    var noteRelativeToRoot = chordRootNum + scaleIntervals[i];
-    if (noteRelativeToRoot >= 12) {
-      noteRelativeToRoot = noteRelativeToRoot - 12;
-    }
-    currentScale.push(
-      trans2octaveInRange(noteRelativeToRoot, upperNoteRange[0], 1)
-    );
-  }
-
-  currentScale = numericalSort(currentScale);
+  return chord;
 }
 
 function nearestChord(fromChord, toPitchClasses) {
+  // console.log('yaee', fromChord, toPitchClasses);
   var octavesUp = [];
   var toChord = [];
   var pitchChoices = makeArray(toPitchClasses.length, octavesUp.length, 0);
-
+  const numUpperVoices = toPitchClasses.length;
+  const upperNoteRange = [72, 2];
   for (var i = 0; i < numUpperVoices; i++) {
     var octave = Math.floor(fromChord[i + 1] / 12);
     if (!(octavesUp.indexOf(octave) > -1)) {
       octavesUp.push(octave); //consider all octaves the pitches in fromChord are in.
     }
   }
-
   for (var i = 0; i < toPitchClasses.length; i++) {
     for (var j = 0; j < octavesUp.length; j++) {
-      var temp = toPitchClasses[i] + 12 * octavesUp[j];
+      const temp = toPitchClasses[i] + 12 * octavesUp[j];
 
       if (
-        temp > upperNoteRange[0] &&
-        temp < upperNoteRange[0] + 12 * upperNoteRange[1]
+        temp >= upperNoteRange[0] &&
+        temp <= upperNoteRange[0] + 12 * upperNoteRange[1]
       ) {
         pitchChoices[i][j] = temp; //add all choices in different octaves
       } else if (temp < upperNoteRange[0]) {
@@ -141,8 +154,7 @@ function nearestChord(fromChord, toPitchClasses) {
   var lowestDistVoiceIndex;
   var lowestDistOctaveIndex;
   let sumOfDists;
-  var lowestSum = 9999;
-  // console.log(voiceChoices, octaveChoices);
+  var lowestSum = Infinity;
   for (var i = 0; i < voiceChoices.length; i++) {
     //loop thru all orders of pitch choices
     for (var j = 0; j < octaveChoices.length; j++) {
@@ -159,7 +171,6 @@ function nearestChord(fromChord, toPitchClasses) {
         lowestDistVoiceIndex = i;
         lowestDistOctaveIndex = j;
         var temp = sumOfDists;
-        lowestSum = temp;
       }
     }
   }
@@ -171,22 +182,35 @@ function nearestChord(fromChord, toPitchClasses) {
       ]
     );
   }
-
   return toChord;
 }
+//* need to account for edge case where upper voices span more than an octave!!1
+// const tests = [
+//   { from: ['C2', 'C4', 'Gb4', 'Ab4', 'D5'], to: 'CM7' },
+//   { from: ['C2', 'C4', 'Gb4', 'Ab4'], to: 'CM7' }
+// ];
 
-const tests = [
-  { from: ['C4', 'C6', 'Gb6', 'Ab6', 'C7'], to: 'CM7' },
-  { from: ['C4', 'C6', 'Gb6', 'Ab6'], to: 'CM7' }
-];
-const runTests = tests => {
-  console.log('-------------------------------------------');
-  test.forEach(test => {
-    voiceLead(test.from, test.to);
-    console.log('-------------------------------------------');
-  });
-};
+// const runTests = tests => {
+//   console.log('-------------------------------------------');
+//   tests.forEach(test => {
+//     console.log('from chord: ', noteArrToMidi(test.from), test.from);
+//     console.log(
+//       'to chord: ',
+//       voiceLead(test.from, test.to).sort((a, b) => a - b),
+//       midiArrToNotes(voiceLead(test.from, test.to))
+//     );
+//     console.log('-------------------------------------------');
+//   });
+// };
 
+// runTests(tests);
+
+const chords = ['Dm7', 'G7', 'CM7'];
+chords.reduce((acc, nextChord) => {
+  const result = voiceLead(acc, nextChord);
+  console.log(result);
+  return result;
+});
 module.exports = { voiceLead };
 
 // main(['Eb7']);
